@@ -53,19 +53,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         SDL_Log("Quit event received, exiting.");
         return SDL_APP_SUCCESS; 
     }
-    if(event->type == SDL_EVENT_KEY_DOWN){
-        SDL_Log("Key pressed: %d",event->key.key);
-        if(event->key.key==SDLK_W){
-            state->texture_y -= 10.0f;
-        }if(event->key.key==SDLK_S){
-            state->texture_y += 10.0f;
-        }if(event->key.key==SDLK_A){
-            state->texture_x -= 10.0f;
-        }if(event->key.key==SDLK_D){
-            SDL_Log("D key pressed");
-            state->texture_x += 10.0f;
-        }
-    }
     return SDL_APP_CONTINUE;
 }
 
@@ -75,20 +62,25 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     AppState *state = (AppState *)appstate;
     const char *message = "Hello World!";
     int w = 0, h = 0;
-    float x, y;
-    const float scale = 4.0f;
-
     SDL_GetCurrentRenderOutputSize(state->renderer, &w, &h);
-    x = ((w / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * SDL_strlen(message)) / 2;
-    y = ((h / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2;
+
+    const bool *key = SDL_GetKeyboardState(NULL);
+    if(key[SDL_SCANCODE_W]){
+        state->texture_y -= 2.0f;
+    }if(key[SDL_SCANCODE_S]){
+        state->texture_y += 2.0f;
+    }if(key[SDL_SCANCODE_A]){
+        state->texture_x -= 2.0f;
+    }if(key[SDL_SCANCODE_D]){
+        state->texture_x += 2.0f;
+    }
 
     SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
     SDL_RenderClear(state->renderer);
     SDL_SetRenderDrawColor(state->renderer, 255, 255, 255, 255);
     SDL_FRect dst_rect;
-    int img_scale = 4;
-    dst_rect.w = (float)state->texture_width*img_scale;
-    dst_rect.h = (float)state->texture_height*img_scale;
+    dst_rect.w = (float)state->texture_width;
+    dst_rect.h = (float)state->texture_height;
     dst_rect.x = state->texture_x;
     dst_rect.y = state->texture_y;
     SDL_RenderTexture(state->renderer, state->texture, NULL, &dst_rect);
