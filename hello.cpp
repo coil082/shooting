@@ -2,8 +2,14 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <vector>
-#include <algorithm>
+#include <string>
 #include <memory>
+
+enum Scene{
+    start,
+    stage_select,
+    battle
+};
 
 enum BalletRotation{
     center,
@@ -55,7 +61,10 @@ class Enemy{
 };
 
 typedef struct{
+    Scene scene;
     SDL_Window *window;
+    int window_w;
+    int window_h;
     SDL_Renderer *renderer;
     SDL_Texture *texture;
     int me_w;
@@ -75,6 +84,7 @@ typedef struct{
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     AppState *state = new AppState();
+    state->scene = Scene::start;
     state->window = NULL;
     state->renderer = NULL;
     state->texture = NULL;
@@ -95,6 +105,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+
+    SDL_GetWindowSize(state->window, &state->window_w, &state->window_h);
 
     surface = SDL_LoadPNG("/img/Me.png");
     enemy_surface = SDL_LoadPNG("/img/enemy.png");
@@ -143,13 +155,23 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     return SDL_APP_CONTINUE;
 }
 
-/* This function runs once per frame, and is the heart of the program. */
-SDL_AppResult SDL_AppIterate(void *appstate)
-{
+void StartScene(void *appstate){
     AppState *state = (AppState *)appstate;
-    const char *message = "Hello World!";
-    int w = 0, h = 0;
-    SDL_GetCurrentRenderOutputSize(state->renderer, &w, &h);
+    const std::string title = "Out shoot";
+    int scale = 10;
+    SDL_SetRenderDrawColor(state->renderer, 255,255,255, 255);
+    SDL_SetRenderScale(state->renderer, scale,scale);
+    SDL_RenderDebugText(state->renderer, ((state->window_w/scale-(SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE*title.length()))/2), (state->window_h/2)/scale, title.c_str());
+    SDL_SetRenderScale(state->renderer, 1.0f, 1.0f);
+    SDL_RenderDebugText(state->renderer, ((state->window_w-(SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE*19))/2), (state->window_h/2)+100, "Press Enter to Start");
+    const bool *key = SDL_GetKeyboardState(NULL);
+    if(key[SDL_SCANCODE_RETURN]){
+        state->scene = Scene::battle;
+    }
+}
+
+void BattleScene(void *appstate){
+    AppState *state = (AppState *)appstate;
     state->ballet_cooldown--;
     const bool *key = SDL_GetKeyboardState(NULL);
     if(key[SDL_SCANCODE_W]){
@@ -172,9 +194,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         state->ballet_cooldown = 60;
     }
 
-    SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(state->renderer);
-    SDL_SetRenderDrawColor(state->renderer, 255, 255, 255, 255);
+
 
     for(auto& ballet: state->ballets){
         ballet->move();
@@ -228,6 +248,22 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     }
 
     SDL_RenderTexture(state->renderer, state->texture, NULL, &dst_rect);
+}
+
+/* This function runs once per frame, and is the heart of the program. */
+SDL_AppResult SDL_AppIterate(void *appstate)
+{
+    AppState *state = (AppState *)appstate;
+
+    SDL_SetRenderDrawColor(state->renderer, 0, 0, 0, 255);
+    SDL_RenderClear(state->renderer);
+    SDL_Log("%u",state->scene);
+    if(state->scene == Scene::start){
+        StartScene(appstate);
+    }
+    else if(state->scene == Scene::battle){
+        BattleScene(appstate);
+    }
     SDL_RenderPresent(state->renderer);
 
     return SDL_APP_CONTINUE;
