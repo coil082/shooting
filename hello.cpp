@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <chrono>
 
 enum Scene{
     start,
@@ -18,15 +19,16 @@ enum BalletRotation{
     right
 };
 
+
 class Ballet{
     private:
         BalletRotation rotation;
+        bool alive = true;
     public:
         float x;
         float y;
         float w;
         float h;
-        bool alive = true;
 
         Ballet(float x, float y,float w,float h, BalletRotation rotation):x(x),y(y),w(w),h(h),rotation(rotation){}
 
@@ -45,19 +47,42 @@ class Ballet{
                     break;
             }
         }
+        bool isAlive()const{
+            return alive;
+        }
+        void update_dead(int window_w,int window_h){
+            if(y<0||y>window_h||x<0||x>window_w){
+                alive = false;
+            }
+        }
+        void kill(){
+            alive = false;
+        }
 };
 
 class Enemy{
+    private:
+        bool alive = true;
     public:
         float x;
         float y;
         float w;
         float h;
-        bool alive = true;
         Enemy(float x, float y,float w,float h):x(x),y(y),w(w),h(h){}
 
         void move(){
             y += 0.75f;
+        }
+        bool isAlive()const{
+            return alive;
+        }
+        void update_dead(int window_w,int window_h){
+            if(y>window_h||x<0||x>window_w){
+                alive = false;
+            }
+        }
+        void kill(){
+            alive = false;
         }
 };
 
@@ -67,20 +92,18 @@ typedef struct{
     int window_w;
     int window_h;
     SDL_Renderer *renderer;
-    SDL_Texture *texture;
-    int me_w;
-    int me_h;
-    float me_x;
-    float me_y;
-    std::vector<std::unique_ptr<Enemy>> enemies;
+    SDL_Texture *me_texture;
+    SDL_FRect me_rect;
+    std::vector<Enemy> enemies;
     SDL_Texture *enemy_texture;
-    std::vector<std::unique_ptr<Ballet>> ballets;
+    std::vector<Ballet> ballets;
     SDL_Texture *ballet_texture;
-    int ballet_cooldown;
+    float ballet_cooldown;
     SDL_Texture *life_texture;
     int life;
     std::vector<SDL_Texture*> stageName_textures;
     TTF_Font *stageName_font;
+    std::chrono::high_resolution_clock::time_point previousTime;
 }AppState;
 
 /* This function runs once at startup. */
@@ -90,15 +113,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->scene = Scene::start;
     state->window = NULL;
     state->renderer = NULL;
-    state->texture = NULL;
+    state->me_texture = NULL;
     state->enemy_texture = NULL;
     state->ballet_texture = NULL;
     state->life_texture = NULL;
     state->ballet_cooldown = 60;
-    state->enemies.push_back(std::make_unique<Enemy>(200.0f,50.0f,60.0f,60.0f));
-    state->enemies.push_back(std::make_unique<Enemy>(400.0f,50.0f,60.0f,60.0f));
-    state->enemies.push_back(std::make_unique<Enemy>(600.0f,50.0f,60.0f,60.0f));
+    state->enemies.push_back(Enemy(200.0f,50.0f,60.0f,60.0f));
+    state->enemies.push_back(Enemy(400.0f,50.0f,60.0f,60.0f));
+    state->enemies.push_back(Enemy(600.0f,50.0f,60.0f,60.0f));
     state->life = 5;
+    state->previousTime = std::chrono::high_resolution_clock::now();
     SDL_Surface *surface = NULL;
     SDL_Surface *enemy_surface = NULL;
     SDL_Surface *ballet_surface = NULL;
@@ -144,11 +168,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't load font: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    state->me_w= surface->w;
-    state->me_h = surface->h;
-    state->me_x = (800-state->me_w)/2.0f;
-    state->me_y = (600-state->me_h)/2.0f;
-    state->texture = SDL_CreateTextureFromSurface(state->renderer,surface);
+    state->me_rect.w= surface->w;
+    state->me_rect.h = surface->h;
+    state->me_rect.x = (800-state->me_rect.w)/2.0f;
+    state->me_rect.y = (600-state->me_rect.h)/2.0f;
+    state->me_texture = SDL_CreateTextureFromSurface(state->renderer,surface);
     state->enemy_texture = SDL_CreateTextureFromSurface(state->renderer,enemy_surface);
     state->ballet_texture = SDL_CreateTextureFromSurface(state->renderer,ballet_surface);
     state->life_texture = SDL_CreateTextureFromSurface(state->renderer,life_surface);
@@ -240,72 +264,65 @@ void StageSelectScene(void *appstate){
 
 void BattleScene(void *appstate){
     AppState *state = (AppState *)appstate;
-    state->ballet_cooldown--;
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - state->previousTime).count();
+    state->previousTime = currentTime;
+    state->ballet_cooldown -=deltaTime;
     const bool *key = SDL_GetKeyboardState(NULL);
     if(key[SDL_SCANCODE_W]){
-        state->me_y -= 3.0f;
+        state->me_rect.y -= 3.0f;
     }if(key[SDL_SCANCODE_S]){
-        state->me_y += 3.0f;
+        state->me_rect.y += 3.0f;
     }if(key[SDL_SCANCODE_A]){
-        state->me_x -= 3.0f;
+        state->me_rect.x -= 3.0f;
     }if(key[SDL_SCANCODE_D]){
-        state->me_x += 3.0f;
+        state->me_rect.x += 3.0f;
     }
-    if(key[SDL_SCANCODE_RIGHT]&&state->ballet_cooldown<=1){
-        state->ballets.push_back(std::make_unique<Ballet>(state->me_x+(state->me_w/3.0f)-10.0f,state->me_y,20.0f,20.0f,BalletRotation::right));
-        state->ballet_cooldown = 61;
-    }if(key[SDL_SCANCODE_LEFT]&&state->ballet_cooldown<=1){
-        state->ballets.push_back(std::make_unique<Ballet>(state->me_x+(state->me_w/2.0f)-10.0f,state->me_y,20.0f,20.0f,BalletRotation::left));
-        state->ballet_cooldown = 60;
+    if(key[SDL_SCANCODE_RIGHT]&&state->ballet_cooldown<=0){
+        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/3.0f)-10.0f,state->me_rect.y,20.0f,20.0f,BalletRotation::right));
+        state->ballet_cooldown = 90;
+    }if(key[SDL_SCANCODE_LEFT]&&state->ballet_cooldown<=0){
+        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,20.0f,20.0f,BalletRotation::left));
+        state->ballet_cooldown = 90;
     }if(key[SDL_SCANCODE_UP]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(std::make_unique<Ballet>(state->me_x+(state->me_w/2.0f)-10.0f,state->me_y,20.0f,20.0f,BalletRotation::center));
-        state->ballet_cooldown = 60;
+        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,20.0f,20.0f,BalletRotation::center));
+        state->ballet_cooldown = 90;
     }
-
-
-
     for(auto& ballet: state->ballets){
-        ballet->move();
+        if(!ballet.isAlive()){continue;}
+        ballet.move();
+        ballet.update_dead(state->window_w,state->window_h);
         SDL_FRect ballet_rect;
-        ballet_rect.w = ballet->w;
-        ballet_rect.h = ballet->h;
-        ballet_rect.x = ballet->x;
-        ballet_rect.y = ballet->y;
+        ballet_rect.w = ballet.w;
+        ballet_rect.h = ballet.h;
+        ballet_rect.x = ballet.x;
+        ballet_rect.y = ballet.y;
         SDL_RenderTexture(state->renderer, state->ballet_texture, NULL,&ballet_rect);
     }
     for(auto& enemy: state->enemies){
-        if(!enemy->alive){continue;}
-        enemy->move();
-
+        if(!enemy.isAlive()){continue;}
+        enemy.update_dead(state->window_w,state->window_h); 
+        enemy.move();
         for(auto& ballet:state->ballets){
-            if(enemy->x<ballet->x+ballet->w&&enemy->x+enemy->w>ballet->x&&enemy->y<ballet->y+ballet->h&&enemy->y+enemy->h>ballet->y){
-                enemy->alive = false;
-                ballet->alive = false;
+            if(enemy.x<ballet.x+ballet.w&&enemy.x+enemy.w>ballet.x&&enemy.y<ballet.y+ballet.h&&enemy.y+enemy.h>ballet.y){
+                enemy.kill();
+                ballet.kill();
                 break;
             }
         }
-
-        if(enemy->x<state->me_x+state->me_w&&enemy->x+enemy->w>state->me_x&&enemy->y<state->me_y+state->me_h&&enemy->y+enemy->h>state->me_y){
-            enemy->alive = false;
+        if(enemy.x<state->me_rect.x+state->me_rect.w&&enemy.x+enemy.w>state->me_rect.x&&enemy.y<state->me_rect.y+state->me_rect.h&&enemy.y+enemy.h>state->me_rect.y){
+            enemy.kill();
             state->life--;
         }
-
         SDL_FRect enemy_rect;
-        enemy_rect.w = enemy->w;
-        enemy_rect.h = enemy->h;
-        enemy_rect.x = enemy->x;
-        enemy_rect.y = enemy->y;
+        enemy_rect.w = enemy.w;
+        enemy_rect.h = enemy.h;
+        enemy_rect.x = enemy.x;
+        enemy_rect.y = enemy.y;
         SDL_RenderTexture(state->renderer, state->enemy_texture, NULL,&enemy_rect);
     }
-    std::erase_if(state->enemies,[](const auto &enemy){return !enemy->alive;});
-    std::erase_if(state->ballets,[](const auto &ballet){return !ballet->alive;});
-
-    SDL_FRect dst_rect;
-    dst_rect.w = (float)state->me_w;
-    dst_rect.h = (float)state->me_h;
-    dst_rect.x = state->me_x;
-    dst_rect.y = state->me_y;
-
+    std::erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
+    std::erase_if(state->ballets,[](const auto &ballet){return !ballet.isAlive();});
     for(int i=0;i<state->life;i++){
         SDL_FRect life_rect;
         life_rect.w = 50.0f;
@@ -315,7 +332,7 @@ void BattleScene(void *appstate){
         SDL_RenderTexture(state->renderer, state->life_texture, NULL,&life_rect);
     }
 
-    SDL_RenderTexture(state->renderer, state->texture, NULL, &dst_rect);
+    SDL_RenderTexture(state->renderer, state->me_texture, NULL, &state->me_rect);
 }
 
 /* This function runs once per frame, and is the heart of the program. */
@@ -344,14 +361,25 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     if(appstate){
         AppState *state = (AppState *)appstate;
-        if(state->texture){
-            SDL_DestroyTexture(state->texture);
+        if(state->me_texture){
+            SDL_DestroyTexture(state->me_texture);
         }
         if(state->enemy_texture){
             SDL_DestroyTexture(state->enemy_texture);
         }
         if(state->ballet_texture){
             SDL_DestroyTexture(state->ballet_texture);
+        }
+        if(state->life_texture){
+            SDL_DestroyTexture(state->life_texture);
+        }
+        if(state->stageName_textures.size()>0){
+            for(auto& texture:state->stageName_textures){
+                SDL_DestroyTexture(texture);
+            }
+        }
+        if(state->stageName_font){
+            TTF_CloseFont(state->stageName_font);
         }
         if(state->renderer){
             SDL_DestroyRenderer(state->renderer);
