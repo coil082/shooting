@@ -127,7 +127,8 @@ typedef struct{
     SDL_Texture *life_texture;
     int life;
     vector<SDL_Texture*> stageName_textures;
-    TTF_Font *stageName_font;
+    SDL_Texture* clear_texture;
+    TTF_Font *tiny_font;
     chrono::high_resolution_clock::time_point previousTime;
     vector<Stage> stages;
     Stage current_Stage{"1-1"};
@@ -171,7 +172,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     surface = SDL_LoadPNG("/img/Me.png");
     enemy_surface = SDL_LoadPNG("/img/enemy.png");
     ballet_surface = SDL_LoadPNG("/img/ballet.png");
-    state->stageName_font = TTF_OpenFontIO(SDL_IOFromConstMem(tiny_ttf,tiny_ttf_len),true,18.0f);
+    state->tiny_font = TTF_OpenFontIO(SDL_IOFromConstMem(tiny_ttf,tiny_ttf_len),true,18.0f);
     life_surface = SDL_LoadPNG("/img/life.png");
     if(!surface){
         SDL_Log("Couldn't load png%s",SDL_GetError());
@@ -189,7 +190,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't load life png%s",SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    if(!state->stageName_font){
+    if(!state->tiny_font){
         SDL_Log("Couldn't load font: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -205,7 +206,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     SDL_DestroySurface(enemy_surface);
     SDL_DestroySurface(surface);
     SDL_DestroySurface(life_surface);
-
+    
+    SDL_Surface *clear_text = TTF_RenderText_Blended(state->tiny_font,"clear",5,SDL_Color{255,200,20});
+    state->clear_texture = SDL_CreateTextureFromSurface(state->renderer,clear_text);
+    SDL_DestroySurface(clear_text);
     state->stages.push_back(Stage("1-1"));
     state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),0);
     state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),100);
@@ -228,12 +232,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->stages.push_back(Stage("1-3"));
     state->current_Stage=state->stages[0];
     for(auto& stage:state->stages){
-        SDL_Surface *stage_text=TTF_RenderText_Blended(state->stageName_font, stage.GetName().c_str(), 3, SDL_Color{0,0,0,255});
+        SDL_Surface *stage_text=TTF_RenderText_Blended(state->tiny_font, stage.GetName().c_str(), 3, SDL_Color{0,0,0,255});
         state->stageName_textures.push_back(SDL_CreateTextureFromSurface(state->renderer,stage_text));
         SDL_DestroySurface(stage_text);
     }
-    SDL_Log("uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuunko");
-    SDL_Log("%s",state->current_Stage.GetName().c_str());
     *appstate = state;
     return SDL_APP_CONTINUE;
 }
@@ -243,6 +245,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     AppState *state = (AppState *)appstate;
     if(state->scene == Scene::stage_select){
+        SDL_Log("%u",state->stageName_textures.size());
         for(int i=0;i<state->stageName_textures.size();i++){
             SDL_FRect dst_rect;
             dst_rect.w = 100.0f;
@@ -256,7 +259,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     state->previousTime = chrono::high_resolution_clock::now();
                     state->enemies.clear();
                     state->scene = Scene::battle;
-                    SDL_Log("%s",state->current_Stage.GetName().c_str());
                 }
             }
         }
@@ -377,6 +379,20 @@ void BattleScene(void *appstate){
     }
     erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
     erase_if(state->ballets,[](const auto &ballet){return !ballet.isAlive();});
+    if(state->enemies.size()==0&&all_of(state->current_Stage.enemy_spawns.begin(),state->current_Stage.enemy_spawns.end(),[](Enemy_spawn x){return x.spawned;})){
+        SDL_FRect clear_rect;
+        clear_rect.w = 500.0f;
+        clear_rect.h = 375.0f;
+        clear_rect.x = state->window_w/2-clear_rect.w/2;
+        clear_rect.y = state->window_h/2-clear_rect.h/2;
+        SDL_RenderTexture(state->renderer,state->clear_texture,NULL,&clear_rect);
+        if(key[SDL_SCANCODE_RETURN]){
+            for(auto enemy_spawn:state->current_Stage.enemy_spawns){
+                enemy_spawn.spawned=false;
+            }
+            state->scene = Scene::stage_select;
+        }
+    }
     for(int i=0;i<state->life;i++){
         SDL_FRect life_rect;
         life_rect.w = 50.0f;
@@ -432,8 +448,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
                 SDL_DestroyTexture(texture);
             }
         }
-        if(state->stageName_font){
-            TTF_CloseFont(state->stageName_font);
+        if(state->tiny_font){
+            TTF_CloseFont(state->tiny_font);
         }
         if(state->renderer){
             SDL_DestroyRenderer(state->renderer);
