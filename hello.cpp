@@ -128,6 +128,7 @@ typedef struct{
     int life;
     vector<SDL_Texture*> stageName_textures;
     SDL_Texture* clear_texture;
+    SDL_Texture* gameover_texture;
     TTF_Font *tiny_font;
     chrono::high_resolution_clock::time_point previousTime;
     vector<Stage> stages;
@@ -208,7 +209,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     SDL_DestroySurface(life_surface);
     
     SDL_Surface *clear_text = TTF_RenderText_Blended(state->tiny_font,"clear",5,SDL_Color{255,200,20});
+    SDL_Surface *gameover_text = TTF_RenderText_Blended(state->tiny_font,"gameover",8,SDL_Color{255,200,20});
     state->clear_texture = SDL_CreateTextureFromSurface(state->renderer,clear_text);
+    state->gameover_texture = SDL_CreateTextureFromSurface(state->renderer,gameover_text);
     SDL_DestroySurface(clear_text);
     state->stages.push_back(Stage("1-1"));
     state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),0);
@@ -245,7 +248,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     AppState *state = (AppState *)appstate;
     if(state->scene == Scene::stage_select){
-        SDL_Log("%u",state->stageName_textures.size());
         for(int i=0;i<state->stageName_textures.size();i++){
             SDL_FRect dst_rect;
             dst_rect.w = 100.0f;
@@ -254,6 +256,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             dst_rect.y = (state->window_h - 100) / 2 + i * 60.0f;
             if(event->type == SDL_EVENT_FINGER_DOWN||event->type == SDL_EVENT_MOUSE_BUTTON_DOWN){
                 if(event->button.x>dst_rect.x&&event->button.x<dst_rect.x+dst_rect.w&&event->button.y>dst_rect.y&&event->button.y<dst_rect.y+dst_rect.h){
+                    for(auto enemy_spawn:state->current_Stage.enemy_spawns){
+                        enemy_spawn.spawned=false;
+                    }
+                    state->life=5;
                     state->current_Stage = state->stages[i];
                     state->time = 0.0f;
                     state->previousTime = chrono::high_resolution_clock::now();
@@ -379,7 +385,21 @@ void BattleScene(void *appstate){
     }
     erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
     erase_if(state->ballets,[](const auto &ballet){return !ballet.isAlive();});
-    if(state->enemies.size()==0&&all_of(state->current_Stage.enemy_spawns.begin(),state->current_Stage.enemy_spawns.end(),[](Enemy_spawn x){return x.spawned;})){
+    if(state->life<=0){
+        for(auto& enemy:state->enemies){
+            enemy.kill();
+        }
+        SDL_FRect gameover_rect;
+        gameover_rect.w = 500.0f;
+        gameover_rect.h = 375.0f;
+        gameover_rect.x = state->window_w/2-gameover_rect.w/2;
+        gameover_rect.y = state->window_h/2-gameover_rect.h/2;
+        SDL_RenderTexture(state->renderer,state->gameover_texture,NULL,&gameover_rect);
+        if(key[SDL_SCANCODE_RETURN]){
+            state->scene = Scene::stage_select;
+        }
+    }
+    else if(state->enemies.size()==0&&all_of(state->current_Stage.enemy_spawns.begin(),state->current_Stage.enemy_spawns.end(),[](Enemy_spawn x){return x.spawned;})){
         SDL_FRect clear_rect;
         clear_rect.w = 500.0f;
         clear_rect.h = 375.0f;
@@ -387,12 +407,10 @@ void BattleScene(void *appstate){
         clear_rect.y = state->window_h/2-clear_rect.h/2;
         SDL_RenderTexture(state->renderer,state->clear_texture,NULL,&clear_rect);
         if(key[SDL_SCANCODE_RETURN]){
-            for(auto enemy_spawn:state->current_Stage.enemy_spawns){
-                enemy_spawn.spawned=false;
-            }
             state->scene = Scene::stage_select;
         }
     }
+    
     for(int i=0;i<state->life;i++){
         SDL_FRect life_rect;
         life_rect.w = 50.0f;
