@@ -93,12 +93,17 @@ struct Enemy_spawn{
     float time;
     bool spawned=false;
 };
-
+struct Zoomout{
+    float time;
+    float size;
+    bool outed=false;
+};
 class Stage{
     private:
         string name;
     public:
         vector<Enemy_spawn> enemy_spawns;
+        vector<Zoomout> zoomouts;
 
         Stage(string name):name(name){}
         string GetName(){
@@ -106,6 +111,9 @@ class Stage{
         }
         void AddEnemy(Enemy enemy,float time){
             enemy_spawns.push_back(Enemy_spawn{enemy,time});
+        }
+        void AddZoomout(float time,float size){
+            zoomouts.push_back(Zoomout{time,size});
         }
 };
 
@@ -115,6 +123,7 @@ typedef struct{
     SDL_Window *window;
     int window_w;
     int window_h;
+    float window_size;
     SDL_Renderer *renderer;
     float time;
     SDL_Texture *me_texture;
@@ -141,6 +150,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     *appstate = state;
     state->scene = Scene::start;
     state->window = NULL;
+    state->window_size = 1.0f;
     state->renderer = NULL;
     state->me_texture = NULL;
     state->enemy_texture = NULL;
@@ -195,8 +205,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't load font: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    state->me_rect.w= surface->w;
-    state->me_rect.h = surface->h;
+    state->me_rect.w= 70;
+    state->me_rect.h = 70;
     state->me_rect.x = (800-state->me_rect.w)/2.0f;
     state->me_rect.y = (600-state->me_rect.h)/2.0f;
     state->me_texture = SDL_CreateTextureFromSurface(state->renderer,surface);
@@ -231,7 +241,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1850);
     state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1900);
     state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1950);
+
     state->stages.push_back(Stage("1-2"));
+    state->stages[1].AddEnemy(Enemy(0,0,60.0f,60.0f),100);
+    state->stages[1].AddEnemy(Enemy(170,0,60.0f,60.0f),250);
+    state->stages[1].AddEnemy(Enemy(370,0,60.0f,60.0f),500);
+    state->stages[1].AddEnemy(Enemy(570,0,60.0f,60.0f),750);
+    state->stages[1].AddEnemy(Enemy(770,0,60.0f,60.0f),1000);
+    state->stages[1].AddZoomout(1000.0f,0.5f);
+
     state->stages.push_back(Stage("1-3"));
     state->current_Stage=state->stages[0];
     for(auto& stage:state->stages){
@@ -261,9 +279,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     }
                     state->life=5;
                     state->current_Stage = state->stages[i];
+                    state->window_size = 1;
                     state->time = 0.0f;
+                    state->me_rect.x = (800-state->me_rect.w)/2.0f;
+                    state->me_rect.y = (600-state->me_rect.h)/2.0f;
                     state->previousTime = chrono::high_resolution_clock::now();
                     state->enemies.clear();
+                    state->ballets.clear();
                     state->scene = Scene::battle;
                 }
             }
@@ -333,13 +355,13 @@ void BattleScene(void *appstate){
         state->me_rect.x += 3.0f;
     }
     if(key[SDL_SCANCODE_RIGHT]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/3.0f)-10.0f,state->me_rect.y,20.0f,20.0f,BalletRotation::right));
+        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/3.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BalletRotation::right));
         state->ballet_cooldown = 90;
     }if(key[SDL_SCANCODE_LEFT]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,20.0f,20.0f,BalletRotation::left));
+        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BalletRotation::left));
         state->ballet_cooldown = 90;
     }if(key[SDL_SCANCODE_UP]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,20.0f,20.0f,BalletRotation::center));
+        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BalletRotation::center));
         state->ballet_cooldown = 90;
     }
     
@@ -349,11 +371,19 @@ void BattleScene(void *appstate){
             enemy_spawn.spawned = true;
         }
     }
+    for(auto& zoomout:state->current_Stage.zoomouts){
+        if(zoomout.time<=state->time&&!zoomout.outed){
+            state->window_size *=zoomout.size;
+            zoomout.outed=true;
+        }
+    }
+
+    SDL_SetRenderScale(state->renderer,state->window_size,state->window_size);
 
     for(auto& ballet: state->ballets){
         if(!ballet.isAlive()){continue;}
         ballet.move();
-        ballet.update_dead(state->window_w,state->window_h);
+        ballet.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size));
         SDL_FRect ballet_rect;
         ballet_rect.w = ballet.w;
         ballet_rect.h = ballet.h;
@@ -363,9 +393,10 @@ void BattleScene(void *appstate){
     }
     for(auto& enemy: state->enemies){
         if(!enemy.isAlive()){continue;}
-        enemy.update_dead(state->window_w,state->window_h); 
+        enemy.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size)); 
         enemy.move();
         for(auto& ballet:state->ballets){
+            if(!ballet.isAlive()){continue;}
             if(enemy.x<ballet.x+ballet.w&&enemy.x+enemy.w>ballet.x&&enemy.y<ballet.y+ballet.h&&enemy.y+enemy.h>ballet.y){
                 enemy.kill();
                 ballet.kill();
@@ -390,10 +421,10 @@ void BattleScene(void *appstate){
             enemy.kill();
         }
         SDL_FRect gameover_rect;
-        gameover_rect.w = 500.0f;
-        gameover_rect.h = 375.0f;
-        gameover_rect.x = state->window_w/2-gameover_rect.w/2;
-        gameover_rect.y = state->window_h/2-gameover_rect.h/2;
+        gameover_rect.w = 500.0f*(1/state->window_size);
+        gameover_rect.h = 375.0f*(1/state->window_size);
+        gameover_rect.x = ((state->window_w/2*(1/state->window_size))-(gameover_rect.w/2));
+        gameover_rect.y = ((state->window_h/2*(1/state->window_size))-(gameover_rect.h/2));
         SDL_RenderTexture(state->renderer,state->gameover_texture,NULL,&gameover_rect);
         if(key[SDL_SCANCODE_RETURN]){
             state->scene = Scene::stage_select;
@@ -401,10 +432,10 @@ void BattleScene(void *appstate){
     }
     else if(state->enemies.size()==0&&all_of(state->current_Stage.enemy_spawns.begin(),state->current_Stage.enemy_spawns.end(),[](Enemy_spawn x){return x.spawned;})){
         SDL_FRect clear_rect;
-        clear_rect.w = 500.0f;
-        clear_rect.h = 375.0f;
-        clear_rect.x = state->window_w/2-clear_rect.w/2;
-        clear_rect.y = state->window_h/2-clear_rect.h/2;
+        clear_rect.w = 500.0f*(1/state->window_size);
+        clear_rect.h = 375.0f*(1/state->window_size);
+        clear_rect.x = ((state->window_w/2*(1/state->window_size))-(clear_rect.w/2));
+        clear_rect.y = ((state->window_h/2*(1/state->window_size))-(clear_rect.h/2));
         SDL_RenderTexture(state->renderer,state->clear_texture,NULL,&clear_rect);
         if(key[SDL_SCANCODE_RETURN]){
             state->scene = Scene::stage_select;
@@ -413,14 +444,16 @@ void BattleScene(void *appstate){
     
     for(int i=0;i<state->life;i++){
         SDL_FRect life_rect;
-        life_rect.w = 50.0f;
-        life_rect.h = 50.0f;
-        life_rect.x = 10.0f + i * 60.0f;
-        life_rect.y = 10.0f;
+        life_rect.w = 50.0f*(1/state->window_size);
+        life_rect.h = 50.0f*(1/state->window_size);
+        life_rect.x = (10.0f + i * 60.0f)*(1/state->window_size);
+        life_rect.y = 10.0f*(1/state->window_size);
         SDL_RenderTexture(state->renderer, state->life_texture, NULL,&life_rect);
     }
 
-    SDL_RenderTexture(state->renderer, state->me_texture, NULL, &state->me_rect);
+    if(state->life>0){
+        SDL_RenderTexture(state->renderer, state->me_texture, NULL, &state->me_rect);
+    }
 }
 
 /* This function runs once per frame, and is the heart of the program. */
