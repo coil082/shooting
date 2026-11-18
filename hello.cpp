@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <functional>
+#include <random>
 #include <chrono>
 
 using namespace std;
@@ -12,19 +14,20 @@ using namespace std;
 enum Scene{
     start,
     stage_select,
-    battle
+    battle,
+    powerup_select
 };
 
-enum BalletRotation{
+enum BulletRotation{
     center,
     left,
     right
 };
 
 
-class Ballet{
+class Bullet{
     private:
-        BalletRotation rotation;
+        BulletRotation rotation;
         bool alive = true;
     public:
         float x;
@@ -32,18 +35,18 @@ class Ballet{
         float w;
         float h;
 
-        Ballet(float x, float y,float w,float h, BalletRotation rotation):x(x),y(y),w(w),h(h),rotation(rotation){}
+        Bullet(float x, float y,float w,float h, BulletRotation rotation):x(x),y(y),w(w),h(h),rotation(rotation){}
 
         void move(){
             switch(rotation){
-                case BalletRotation::center:
+                case BulletRotation::center:
                     y -= 2.0f;
                     break;
-                case BalletRotation::left:
+                case BulletRotation::left:
                     x -= 2.0f;
                     y -= 2.0f;
                     break;
-                case BalletRotation::right:
+                case BulletRotation::right:
                     x += 2.0f;
                     y -= 2.0f;
                     break;
@@ -116,33 +119,57 @@ class Stage{
             zoomouts.push_back(Zoomout{time,size});
         }
 };
+struct Powerup;
 
-
-typedef struct{
+struct AppState{
     Scene scene;
     SDL_Window *window;
     int window_w;
     int window_h;
     float window_size;
     SDL_Renderer *renderer;
+    chrono::high_resolution_clock::time_point previousTime;
     float time;
     SDL_Texture *me_texture;
     SDL_FRect me_rect;
+    int life;
+    int exp;
+    int goal_exp;
+    vector<unique_ptr<Powerup>> powerups;
+    vector<int> powerup_numbers;
+    float speed;
+    vector<Bullet> bullets;
+    float bullet_size;
+    SDL_Texture *bullet_texture;
+    float bullet_cooldown;
+    SDL_Texture *life_texture;
     vector<Enemy> enemies;
     SDL_Texture *enemy_texture;
-    vector<Ballet> ballets;
-    SDL_Texture *ballet_texture;
-    float ballet_cooldown;
-    SDL_Texture *life_texture;
-    int life;
     vector<SDL_Texture*> stageName_textures;
+    TTF_Font *tiny_font;
     SDL_Texture* clear_texture;
     SDL_Texture* gameover_texture;
-    TTF_Font *tiny_font;
-    chrono::high_resolution_clock::time_point previousTime;
     vector<Stage> stages;
     Stage current_Stage{"1-1"};
-}AppState;
+    mt19937 engine;
+
+    AppState() : engine(std::random_device{}()) {}
+};
+
+struct Powerup{
+    AppState* state;
+    string name;
+    string description;
+    function<void(void*)> effect;
+    SDL_Texture* name_texture;
+    SDL_Texture* description_texture;
+    Powerup(AppState* state,string name,string description,function<void(void*)> effect):state(state),name(name),description(description),effect(effect),
+    name_texture(SDL_CreateTextureFromSurface(state->renderer,TTF_RenderText_Blended(state->tiny_font,name.c_str(),name.size(),SDL_Color{255,255,255}))),
+    description_texture(SDL_CreateTextureFromSurface(state->renderer,TTF_RenderText_Blended(state->tiny_font,description.c_str(),description.size(),SDL_Color{255,255,255}))){} 
+};
+
+
+
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
@@ -153,16 +180,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->window_size = 1.0f;
     state->renderer = NULL;
     state->me_texture = NULL;
-    state->enemy_texture = NULL;
-    state->ballet_texture = NULL;
-    state->life_texture = NULL;
-    state->ballet_cooldown = 60;
-    state->time = 0.0f;
     state->life = 5;
+    state->exp = 0;
+    state->goal_exp = 10;
+    state->speed = 1;
+    state->enemy_texture = NULL;
+    state->bullet_texture = NULL;
+    state->life_texture = NULL;
+    state->bullet_cooldown = 60;
+    state->time = 0.0f;
     state->previousTime = chrono::high_resolution_clock::now();
     SDL_Surface *surface = NULL;
     SDL_Surface *enemy_surface = NULL;
-    SDL_Surface *ballet_surface = NULL;
+    SDL_Surface *bullet_surface = NULL;
     SDL_Surface *life_surface = NULL;
 
     extern unsigned char tiny_ttf[];
@@ -182,7 +212,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     surface = SDL_LoadPNG("/img/Me.png");
     enemy_surface = SDL_LoadPNG("/img/enemy.png");
-    ballet_surface = SDL_LoadPNG("/img/ballet.png");
+    bullet_surface = SDL_LoadPNG("/img/bullet.png");
     state->tiny_font = TTF_OpenFontIO(SDL_IOFromConstMem(tiny_ttf,tiny_ttf_len),true,18.0f);
     life_surface = SDL_LoadPNG("/img/life.png");
     if(!surface){
@@ -193,8 +223,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't load enemy png%s",SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    if(!ballet_surface){
-        SDL_Log("Couldn't load ballet png%s",SDL_GetError());
+    if(!bullet_surface){
+        SDL_Log("Couldn't load bullet png%s",SDL_GetError());
         return SDL_APP_FAILURE;
     }
     if(!life_surface){
@@ -211,9 +241,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->me_rect.y = (600-state->me_rect.h)/2.0f;
     state->me_texture = SDL_CreateTextureFromSurface(state->renderer,surface);
     state->enemy_texture = SDL_CreateTextureFromSurface(state->renderer,enemy_surface);
-    state->ballet_texture = SDL_CreateTextureFromSurface(state->renderer,ballet_surface);
+    state->bullet_texture = SDL_CreateTextureFromSurface(state->renderer,bullet_surface);
     state->life_texture = SDL_CreateTextureFromSurface(state->renderer,life_surface);
-    SDL_DestroySurface(ballet_surface);
+    SDL_DestroySurface(bullet_surface);
     SDL_DestroySurface(enemy_surface);
     SDL_DestroySurface(surface);
     SDL_DestroySurface(life_surface);
@@ -257,6 +287,35 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         state->stageName_textures.push_back(SDL_CreateTextureFromSurface(state->renderer,stage_text));
         SDL_DestroySurface(stage_text);
     }
+    state->powerups.push_back(make_unique<Powerup>(
+        state,
+        "speedup",
+        "new you is faster than old you!!!",
+        [](void* appstate)->void{
+            AppState *state = (AppState *)appstate;
+            state->speed *= 1.75;
+            SDL_Log("speedup");
+        }
+    ));
+    state->powerups.push_back(make_unique<Powerup>(
+        state,
+        "ballet size up",
+        "your ballet will kill more enemy.",
+        [](void* appstate)->void{
+            AppState *state = (AppState *)appstate;
+            SDL_Log("balletsize up");
+        }
+    ));
+    state->powerups.push_back(make_unique<Powerup>(
+        state,
+        "",
+        "",
+        [](void* appstate)->void{
+            AppState *state = (AppState *)appstate;
+
+            SDL_Log("powerup");
+        }
+    ));
     *appstate = state;
     return SDL_APP_CONTINUE;
 }
@@ -278,6 +337,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                         enemy_spawn.spawned=false;
                     }
                     state->life=5;
+                    state->exp = 0;
+                    state->goal_exp = 10;
                     state->current_Stage = state->stages[i];
                     state->window_size = 1;
                     state->time = 0.0f;
@@ -285,7 +346,22 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                     state->me_rect.y = (600-state->me_rect.h)/2.0f;
                     state->previousTime = chrono::high_resolution_clock::now();
                     state->enemies.clear();
-                    state->ballets.clear();
+                    state->bullets.clear();
+                    state->scene = Scene::battle;
+                }
+            }
+        }
+    }
+    if(state->scene == Scene::powerup_select){
+        for(int i=0;i<3;i++){
+            SDL_FRect dst_rect;
+            dst_rect.w=200;
+            dst_rect.h=500;
+            dst_rect.x=50+(dst_rect.w+50)*i;
+            dst_rect.y = 50;
+            if(event->type == SDL_EVENT_FINGER_DOWN||event->type == SDL_EVENT_MOUSE_BUTTON_DOWN){
+                if(event->button.x>dst_rect.x&&event->button.x<dst_rect.x+dst_rect.w&&event->button.y>dst_rect.y&&event->button.y<dst_rect.y+dst_rect.h){
+                    state->powerups[state->powerup_numbers[i]]->effect(state);
                     state->scene = Scene::battle;
                 }
             }
@@ -342,27 +418,27 @@ void BattleScene(void *appstate){
     auto currentTime = chrono::high_resolution_clock::now();
     auto deltaTime = chrono::duration_cast<chrono::milliseconds>(currentTime - state->previousTime).count();
     state->previousTime = currentTime;
-    state->ballet_cooldown-=deltaTime;
+    state->bullet_cooldown-=deltaTime;
     state->time += deltaTime;
     const bool *key = SDL_GetKeyboardState(NULL);
     if(key[SDL_SCANCODE_W]){
-        state->me_rect.y -= 3.0f;
+        state->me_rect.y -= 3.0f*state->speed;
     }if(key[SDL_SCANCODE_S]){
-        state->me_rect.y += 3.0f;
+        state->me_rect.y += 3.0f*state->speed;
     }if(key[SDL_SCANCODE_A]){
-        state->me_rect.x -= 3.0f;
+        state->me_rect.x -= 3.0f*state->speed;
     }if(key[SDL_SCANCODE_D]){
-        state->me_rect.x += 3.0f;
+        state->me_rect.x += 3.0f*state->speed;
     }
-    if(key[SDL_SCANCODE_RIGHT]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/3.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BalletRotation::right));
-        state->ballet_cooldown = 90;
-    }if(key[SDL_SCANCODE_LEFT]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BalletRotation::left));
-        state->ballet_cooldown = 90;
-    }if(key[SDL_SCANCODE_UP]&&state->ballet_cooldown<=0){
-        state->ballets.push_back(Ballet(state->me_rect.x+(state->me_rect.w/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BalletRotation::center));
-        state->ballet_cooldown = 90;
+    if(key[SDL_SCANCODE_RIGHT]&&state->bullet_cooldown<=0){
+        state->bullets.push_back(Bullet((state->me_rect.x+(70/2.0f)-10.0f),state->me_rect.y,40.0f,40.0f,BulletRotation::right));
+        state->bullet_cooldown = 90;
+    }if(key[SDL_SCANCODE_LEFT]&&state->bullet_cooldown<=0){
+        state->bullets.push_back(Bullet(state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BulletRotation::left));
+        state->bullet_cooldown = 90;
+    }if(key[SDL_SCANCODE_UP]&&state->bullet_cooldown<=0){
+        state->bullets.push_back(Bullet(state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BulletRotation::center));
+        state->bullet_cooldown = 90;
     }
     
     for(auto& enemy_spawn:state->current_Stage.enemy_spawns){
@@ -380,26 +456,27 @@ void BattleScene(void *appstate){
 
     SDL_SetRenderScale(state->renderer,state->window_size,state->window_size);
 
-    for(auto& ballet: state->ballets){
-        if(!ballet.isAlive()){continue;}
-        ballet.move();
-        ballet.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size));
-        SDL_FRect ballet_rect;
-        ballet_rect.w = ballet.w;
-        ballet_rect.h = ballet.h;
-        ballet_rect.x = ballet.x;
-        ballet_rect.y = ballet.y;
-        SDL_RenderTexture(state->renderer, state->ballet_texture, NULL,&ballet_rect);
+    for(auto& bullet: state->bullets){
+        if(!bullet.isAlive()){continue;}
+        bullet.move();
+        bullet.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size));
+        SDL_FRect bullet_rect;
+        bullet_rect.w = bullet.w;
+        bullet_rect.h = bullet.h;
+        bullet_rect.x = bullet.x;
+        bullet_rect.y = bullet.y;
+        SDL_RenderTexture(state->renderer, state->bullet_texture, NULL,&bullet_rect);
     }
     for(auto& enemy: state->enemies){
         if(!enemy.isAlive()){continue;}
         enemy.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size)); 
         enemy.move();
-        for(auto& ballet:state->ballets){
-            if(!ballet.isAlive()){continue;}
-            if(enemy.x<ballet.x+ballet.w&&enemy.x+enemy.w>ballet.x&&enemy.y<ballet.y+ballet.h&&enemy.y+enemy.h>ballet.y){
+        for(auto& bullet:state->bullets){
+            if(!bullet.isAlive()){continue;}
+            if(enemy.x<bullet.x+bullet.w&&enemy.x+enemy.w>bullet.x&&enemy.y<bullet.y+bullet.h&&enemy.y+enemy.h>bullet.y){
+                state->exp += 5;
                 enemy.kill();
-                ballet.kill();
+                bullet.kill();
                 break;
             }
         }
@@ -414,8 +491,16 @@ void BattleScene(void *appstate){
         enemy_rect.y = enemy.y;
         SDL_RenderTexture(state->renderer, state->enemy_texture, NULL,&enemy_rect);
     }
-    erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
-    erase_if(state->ballets,[](const auto &ballet){return !ballet.isAlive();});
+    std::erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
+    std::erase_if(state->bullets,[](const auto &bullet){return !bullet.isAlive();});
+    if(state->exp >= state->goal_exp){
+        uniform_int_distribution<> dist(0,state->powerups.size()-1);
+        for(int i=0;i<3;i++){
+            state->powerup_numbers.push_back(dist(state->engine));
+        }
+        state->scene = Scene::powerup_select;
+        state->goal_exp = state->goal_exp*2.3;
+    }
     if(state->life<=0){
         for(auto& enemy:state->enemies){
             enemy.kill();
@@ -456,6 +541,26 @@ void BattleScene(void *appstate){
     }
 }
 
+void PowerupSelectScene(void *appstate){
+    AppState *state = (AppState *)appstate;
+    SDL_SetRenderScale(state->renderer,1,1);
+    for(int i=0;i<3;i++){
+        SDL_FRect card_rect;
+        card_rect.w=200;
+        card_rect.h=500;
+        card_rect.x=50+(card_rect.w+50)*i;
+        card_rect.y=50;
+        SDL_SetRenderDrawColor(state->renderer,255,255,255,255);
+        SDL_RenderRect(state->renderer,&card_rect);
+        SDL_FRect name_rect;
+        name_rect.w=150;
+        name_rect.h=100;
+        name_rect.x=card_rect.x;
+        name_rect.y=150;
+        SDL_RenderTexture(state->renderer,state->powerups[state->powerup_numbers[i]]->name_texture,NULL,&name_rect);
+    }
+}
+
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
@@ -471,6 +576,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     }
     else if(state->scene == Scene::battle){
         BattleScene(appstate);
+    }
+    else if(state->scene == Scene::powerup_select){
+        PowerupSelectScene(appstate);
     }
     SDL_RenderPresent(state->renderer);
 
@@ -488,8 +596,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         if(state->enemy_texture){
             SDL_DestroyTexture(state->enemy_texture);
         }
-        if(state->ballet_texture){
-            SDL_DestroyTexture(state->ballet_texture);
+        if(state->bullet_texture){
+            SDL_DestroyTexture(state->bullet_texture);
         }
         if(state->life_texture){
             SDL_DestroyTexture(state->life_texture);
