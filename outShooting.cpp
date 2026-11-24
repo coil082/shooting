@@ -2,12 +2,15 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <vector>
-#include <string>
 #include <memory>
 #include <functional>
 #include <random>
 #include <chrono>
+
+#include "creature.hpp"
+#include "enemy.hpp"
+#include "bullet.hpp"
+#include "stage.hpp"
 
 using namespace std;
 
@@ -18,107 +21,6 @@ enum Scene{
     powerup_select
 };
 
-enum BulletRotation{
-    center,
-    left,
-    right
-};
-
-
-class Bullet{
-    private:
-        BulletRotation rotation;
-        bool alive = true;
-    public:
-        float x;
-        float y;
-        float w;
-        float h;
-
-        Bullet(float x, float y,float w,float h, BulletRotation rotation):x(x),y(y),w(w),h(h),rotation(rotation){}
-
-        void move(){
-            switch(rotation){
-                case BulletRotation::center:
-                    y -= 2.0f;
-                    break;
-                case BulletRotation::left:
-                    x -= 2.0f;
-                    y -= 2.0f;
-                    break;
-                case BulletRotation::right:
-                    x += 2.0f;
-                    y -= 2.0f;
-                    break;
-            }
-        }
-        bool isAlive()const{
-            return alive;
-        }
-        void update_dead(int window_w,int window_h){
-            if(y<0||y>window_h||x<0||x>window_w){
-                alive = false;
-            }
-        }
-        void kill(){
-            alive = false;
-        }
-};
-
-class Enemy{
-    private:
-        bool alive = true;
-    public:
-        float x;
-        float y;
-        float w;
-        float h;
-        Enemy(float x, float y,float w,float h):x(x),y(y),w(w),h(h){}
-
-        void move(){
-            y += 0.75f;
-        }
-        bool isAlive()const{
-            return alive;
-        }
-        void update_dead(int window_w,int window_h){
-            if(y>window_h||x<0||x>window_w){
-                alive = false;
-            }
-        }
-        void kill(){
-            alive = false;
-        }
-};
-
-struct Enemy_spawn{
-    Enemy enemy;
-    float time;
-    bool spawned=false;
-};
-struct Zoomout{
-    float time;
-    float size;
-    bool outed=false;
-};
-class Stage{
-    private:
-        string name;
-    public:
-        vector<Enemy_spawn> enemy_spawns;
-        vector<Zoomout> zoomouts;
-
-        Stage(string name):name(name){}
-        string GetName(){
-            return name;
-        }
-        void AddEnemy(Enemy enemy,float time){
-            enemy_spawns.push_back(Enemy_spawn{enemy,time});
-        }
-        void AddZoomout(float time,float size){
-            zoomouts.push_back(Zoomout{time,size});
-        }
-};
 struct Powerup;
 
 struct AppState{
@@ -173,6 +75,7 @@ struct Powerup{
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
+    SDL_Log("kakikukeko");
     AppState *state = new AppState{};
     *appstate = state;
     state->scene = Scene::start;
@@ -235,7 +138,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't load font: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
-    state->me_rect.w= 70;
+    state->me_rect.w = 70;
     state->me_rect.h = 70;
     state->me_rect.x = (800-state->me_rect.w)/2.0f;
     state->me_rect.y = (600-state->me_rect.h)/2.0f;
@@ -254,30 +157,31 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->gameover_texture = SDL_CreateTextureFromSurface(state->renderer,gameover_text);
     SDL_DestroySurface(clear_text);
     state->stages.push_back(Stage("1-1"));
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),0);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),100);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),200);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),300);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),400);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),500);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),600);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1500);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1550);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1650);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1600);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1750);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1700);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1800);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1850);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1900);
-    state->stages[0].AddEnemy(Enemy(400,0,60.0f,60.0f),1950);
+    SDL_FRect normal_enemy_rect = {400,0,60,60};
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),0);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),100);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),200);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),300);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),400);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),500);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),600);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1500);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1550);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1650);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1600);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1750);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1700);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1800);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1850);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1900);
+    state->stages[0].AddEnemy(Enemy(normal_enemy_rect),1950);
 
     state->stages.push_back(Stage("1-2"));
-    state->stages[1].AddEnemy(Enemy(0,0,60.0f,60.0f),100);
-    state->stages[1].AddEnemy(Enemy(170,0,60.0f,60.0f),250);
-    state->stages[1].AddEnemy(Enemy(370,0,60.0f,60.0f),500);
-    state->stages[1].AddEnemy(Enemy(570,0,60.0f,60.0f),750);
-    state->stages[1].AddEnemy(Enemy(770,0,60.0f,60.0f),1000);
+    state->stages[1].AddEnemy(Enemy({0,0,60.0f,60.0f}),100);
+    state->stages[1].AddEnemy(Enemy({170,0,60.0f,60.0f}),250);
+    state->stages[1].AddEnemy(Enemy({370,0,60.0f,60.0f}),500);
+    state->stages[1].AddEnemy(Enemy({570,0,60.0f,60.0f}),750);
+    state->stages[1].AddEnemy(Enemy({770,0,60.0f,60.0f}),1000);
     state->stages[1].AddZoomout(1000.0f,0.5f);
 
     state->stages.push_back(Stage("1-3"));
@@ -431,13 +335,13 @@ void BattleScene(void *appstate){
         state->me_rect.x += 3.0f*state->speed;
     }
     if(key[SDL_SCANCODE_RIGHT]&&state->bullet_cooldown<=0){
-        state->bullets.push_back(Bullet((state->me_rect.x+(70/2.0f)-10.0f),state->me_rect.y,40.0f,40.0f,BulletRotation::right));
+        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::right));
         state->bullet_cooldown = 90;
     }if(key[SDL_SCANCODE_LEFT]&&state->bullet_cooldown<=0){
-        state->bullets.push_back(Bullet(state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BulletRotation::left));
+        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::left));
         state->bullet_cooldown = 90;
     }if(key[SDL_SCANCODE_UP]&&state->bullet_cooldown<=0){
-        state->bullets.push_back(Bullet(state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f,BulletRotation::center));
+        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::center));
         state->bullet_cooldown = 90;
     }
     
@@ -459,37 +363,27 @@ void BattleScene(void *appstate){
     for(auto& bullet: state->bullets){
         if(!bullet.isAlive()){continue;}
         bullet.move();
-        bullet.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size));
-        SDL_FRect bullet_rect;
-        bullet_rect.w = bullet.w;
-        bullet_rect.h = bullet.h;
-        bullet_rect.x = bullet.x;
-        bullet_rect.y = bullet.y;
-        SDL_RenderTexture(state->renderer, state->bullet_texture, NULL,&bullet_rect);
+        bullet.update_dead(state->window_w/state->window_size,state->window_h/state->window_size);
+        SDL_RenderTexture(state->renderer, state->bullet_texture, NULL,&bullet.rect);
     }
     for(auto& enemy: state->enemies){
         if(!enemy.isAlive()){continue;}
-        enemy.update_dead(state->window_w*(1/state->window_size),state->window_h*(1/state->window_size)); 
         enemy.move();
+        enemy.update_dead(state->window_w/state->window_size,state->window_h/state->window_size); 
         for(auto& bullet:state->bullets){
             if(!bullet.isAlive()){continue;}
-            if(enemy.x<bullet.x+bullet.w&&enemy.x+enemy.w>bullet.x&&enemy.y<bullet.y+bullet.h&&enemy.y+enemy.h>bullet.y){
+            if(enemy.rect.x<bullet.rect.x+bullet.rect.w&&enemy.rect.x+enemy.rect.w>bullet.rect.x&&enemy.rect.y<bullet.rect.y+bullet.rect.h&&enemy.rect.y+enemy.rect.h>bullet.rect.y){
                 state->exp += 5;
                 enemy.kill();
                 bullet.kill();
                 break;
             }
         }
-        if(enemy.x<state->me_rect.x+state->me_rect.w&&enemy.x+enemy.w>state->me_rect.x&&enemy.y<state->me_rect.y+state->me_rect.h&&enemy.y+enemy.h>state->me_rect.y){
+        if(enemy.rect.x<state->me_rect.x+state->me_rect.w&&enemy.rect.x+enemy.rect.w>state->me_rect.x&&enemy.rect.y<state->me_rect.y+state->me_rect.h&&enemy.rect.y+enemy.rect.h>state->me_rect.y){
             enemy.kill();
             state->life--;
         }
-        SDL_FRect enemy_rect;
-        enemy_rect.w = enemy.w;
-        enemy_rect.h = enemy.h;
-        enemy_rect.x = enemy.x;
-        enemy_rect.y = enemy.y;
-        SDL_RenderTexture(state->renderer, state->enemy_texture, NULL,&enemy_rect);
+        SDL_RenderTexture(state->renderer, state->enemy_texture, NULL,&enemy.rect);
     }
     std::erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
     std::erase_if(state->bullets,[](const auto &bullet){return !bullet.isAlive();});

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hello CXX)
+project(outShooting CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,9 +20,9 @@ if(EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".html" CACHE INTERNAL "")
 endif()
 # Create your game executable target as usual
-add_executable(hello WIN32 hello.cpp)
+add_executable(outShooting WIN32 outShooting.cpp creature.cpp enemy.cpp bullet.cpp stage.cpp)
 
 # Link to the actual SDL3 library.
-target_link_libraries(hello PRIVATE SDL3_ttf::SDL3_ttf SDL3::SDL3)
-target_link_options(hello PRIVATE "--preload-file"
+target_link_libraries(outShooting PRIVATE SDL3_ttf::SDL3_ttf SDL3::SDL3)
+target_link_options(outShooting PRIVATE "--preload-file"
 "${CMAKE_SOURCE_DIR}/img@img")
