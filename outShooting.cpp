@@ -75,7 +75,6 @@ struct Powerup{
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
-    SDL_Log("kakikukeko");
     AppState *state = new AppState{};
     *appstate = state;
     state->scene = Scene::start;
