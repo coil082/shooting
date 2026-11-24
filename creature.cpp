@@ -2,7 +2,6 @@
 
 void Creature::move(){
     rect.y+=0.75f;
-    SDL_Log("aiueo");
 };
 bool Creature::isAlive()const{
     return alive;
