@@ -1,7 +1,5 @@
 #pragma once
 #include "enemy.hpp"
-#include <vector>
-#include <string>
 
 struct Enemy_spawn{
     Enemy enemy;

@@ -47,6 +47,9 @@ struct AppState{
     SDL_Texture *life_texture;
     vector<Enemy> enemies;
     SDL_Texture *enemy_texture;
+    vector<Bullet> enemy_bullets;
+    SDL_Texture *enemy_bullet_texture1;
+    SDL_Texture *enemy_bullet_texture2;
     vector<SDL_Texture*> stageName_textures;
     TTF_Font *tiny_font;
     SDL_Texture* clear_texture;
@@ -89,6 +92,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->enemy_texture = NULL;
     state->bullet_texture = NULL;
     state->life_texture = NULL;
+    state->enemy_bullet_texture1 = NULL;
+    state->enemy_bullet_texture2 = NULL;
     state->bullet_cooldown = 60;
     state->time = 0.0f;
     state->previousTime = chrono::high_resolution_clock::now();
@@ -96,6 +101,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     SDL_Surface *enemy_surface = NULL;
     SDL_Surface *bullet_surface = NULL;
     SDL_Surface *life_surface = NULL;
+    SDL_Surface *enemy_bullet_surface = NULL;
 
     extern unsigned char tiny_ttf[];
     extern unsigned int tiny_ttf_len;
@@ -115,6 +121,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     surface = SDL_LoadPNG("/img/Me.png");
     enemy_surface = SDL_LoadPNG("/img/enemy.png");
     bullet_surface = SDL_LoadPNG("/img/bullet.png");
+    enemy_bullet_surface = SDL_LoadPNG("/img/enemy_bullet1.png");
     state->tiny_font = TTF_OpenFontIO(SDL_IOFromConstMem(tiny_ttf,tiny_ttf_len),true,18.0f);
     life_surface = SDL_LoadPNG("/img/life.png");
     if(!surface){
@@ -132,6 +139,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     if(!life_surface){
         SDL_Log("Couldn't load life png%s",SDL_GetError());
         return SDL_APP_FAILURE;
+    }if(!enemy_bullet_surface){
+        SDL_Log("Couldn't load enemy's bullet png%s",SDL_GetError());
+        return SDL_APP_FAILURE;
     }
     if(!state->tiny_font){
         SDL_Log("Couldn't load font: %s", SDL_GetError());
@@ -144,8 +154,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->me_texture = SDL_CreateTextureFromSurface(state->renderer,surface);
     state->enemy_texture = SDL_CreateTextureFromSurface(state->renderer,enemy_surface);
     state->bullet_texture = SDL_CreateTextureFromSurface(state->renderer,bullet_surface);
+    state->enemy_bullet_texture1 = SDL_CreateTextureFromSurface(state->renderer,enemy_bullet_surface);
+    SDL_FlipSurface(enemy_bullet_surface,SDL_FLIP_HORIZONTAL);
+    state->enemy_bullet_texture2 = SDL_CreateTextureFromSurface(state->renderer,enemy_bullet_surface);
     state->life_texture = SDL_CreateTextureFromSurface(state->renderer,life_surface);
     SDL_DestroySurface(bullet_surface);
+    SDL_DestroySurface(enemy_bullet_surface);
     SDL_DestroySurface(enemy_surface);
     SDL_DestroySurface(surface);
     SDL_DestroySurface(life_surface);
@@ -184,6 +198,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     state->stages[1].AddZoomout(1000.0f,0.5f);
 
     state->stages.push_back(Stage("1-3"));
+    state->stages[2].AddEnemy(Enemy({0,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({70,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({170,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({270,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({370,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({470,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({570,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({670,0,60.0f,60.0f},true),250);
+    state->stages[2].AddEnemy(Enemy({770,0,60.0f,60.0f},true),250);
     state->current_Stage=state->stages[0];
     for(auto& stage:state->stages){
         SDL_Surface *stage_text=TTF_RenderText_Blended(state->tiny_font, stage.GetName().c_str(), 3, SDL_Color{0,0,0,255});
@@ -333,14 +356,8 @@ void BattleScene(void *appstate){
     }if(key[SDL_SCANCODE_D]){
         state->me_rect.x += 3.0f*state->speed;
     }
-    if(key[SDL_SCANCODE_RIGHT]&&state->bullet_cooldown<=0){
-        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::right));
-        state->bullet_cooldown = 90;
-    }if(key[SDL_SCANCODE_LEFT]&&state->bullet_cooldown<=0){
-        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::left));
-        state->bullet_cooldown = 90;
-    }if(key[SDL_SCANCODE_UP]&&state->bullet_cooldown<=0){
-        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::center));
+    if(key[SDL_SCANCODE_UP]&&state->bullet_cooldown<=0){
+        state->bullets.push_back(Bullet({state->me_rect.x+(70/2.0f)-10.0f,state->me_rect.y,40.0f,40.0f},BulletRotation::me));
         state->bullet_cooldown = 90;
     }
     
@@ -367,6 +384,11 @@ void BattleScene(void *appstate){
     }
     for(auto& enemy: state->enemies){
         if(!enemy.isAlive()){continue;}
+        enemy.cooldown-=deltaTime;
+        if(enemy.GetShoot()&&enemy.cooldown<0){
+            enemy.shootBullet(state->enemy_bullets);
+            enemy.cooldown=1000; 
+        }
         enemy.move();
         enemy.update_dead(state->window_w/state->window_size,state->window_h/state->window_size); 
         for(auto& bullet:state->bullets){
@@ -384,6 +406,22 @@ void BattleScene(void *appstate){
         }
         SDL_RenderTexture(state->renderer, state->enemy_texture, NULL,&enemy.rect);
     }
+    for(auto& enemy_bullet:state->enemy_bullets){
+        if(!enemy_bullet.isAlive()){continue;}
+        enemy_bullet.move();
+        enemy_bullet.update_dead(state->window_w/state->window_size,state->window_h/state->window_size);
+        if(enemy_bullet.rect.x<state->me_rect.x+state->me_rect.w&&enemy_bullet.rect.x+enemy_bullet.rect.w>state->me_rect.x&&enemy_bullet.rect.y<state->me_rect.y+state->me_rect.h&&enemy_bullet.rect.y+enemy_bullet.rect.h>state->me_rect.y){
+            enemy_bullet.kill();
+            state->life--;
+        }
+
+        if(enemy_bullet.GetFliped()){
+            SDL_RenderTexture(state->renderer,state->enemy_bullet_texture1,NULL,&enemy_bullet.rect);
+        }else{
+            SDL_RenderTexture(state->renderer,state->enemy_bullet_texture2,NULL,&enemy_bullet.rect);
+        }
+    }
+    std::erase_if(state->enemy_bullets,[](const auto &enemy_bullet){return !enemy_bullet.isAlive();});
     std::erase_if(state->enemies,[](const auto &enemy){return !enemy.isAlive();});
     std::erase_if(state->bullets,[](const auto &bullet){return !bullet.isAlive();});
     if(state->exp >= state->goal_exp){
