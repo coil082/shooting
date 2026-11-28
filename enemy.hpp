@@ -1,7 +1,13 @@
 #pragma once
 #include "creature.hpp"
+#include "bullet.hpp"
 
 class Enemy:public Creature{
+    private:
+        bool shoot;
     public:
-        Enemy(SDL_FRect rect_);
+        float cooldown;
+        Enemy(SDL_FRect rect_,bool shoot_=false);
+        bool GetShoot();
+        void shootBullet(std::vector<Bullet>&);
 };
